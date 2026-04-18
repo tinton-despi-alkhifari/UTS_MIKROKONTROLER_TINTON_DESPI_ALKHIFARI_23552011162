@@ -1,4 +1,4 @@
-#TENTANG
+*TENTANG*
 
 Sistem Smart Parking berhasil dibuat menggunakan ESP32 dan sensor ultrasonik untuk mendeteksi kondisi parkir secara otomatis berdasarkan jarak kendaraan.
 Penggunaan 4 LED sebagai indikator memudahkan pengguna mengetahui status parkir secara langsung (kosong, mendekat, terisi, penuh).
