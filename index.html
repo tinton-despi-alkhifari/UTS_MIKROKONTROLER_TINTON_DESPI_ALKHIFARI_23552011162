@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32 Smart Parking</title>
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<style>
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #1e3c72, #2a5298);
+    margin: 0;
+    color: white;
+
+    /* FIX UTAMA */
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 20px;
+}
+
+/* CONTAINER RESPONSIVE */
+.container {
+    width: 100%;
+    max-width: 420px;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(12px);
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+}
+
+h2 {
+    text-align: center;
+}
+
+/* STATUS */
+.status {
+    padding: 12px;
+    border-radius: 10px;
+    text-align: center;
+    margin-bottom: 15px;
+    font-weight: bold;
+    background: #444;
+}
+
+/* BOX */
+.box {
+    background: rgba(255,255,255,0.15);
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+}
+
+/* TEXT */
+.label {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+.value {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+/* INDIKATOR */
+.indicator {
+    margin-top: 8px;
+    height: 10px;
+    border-radius: 10px;
+    background: gray;
+}
+
+/* BUTTON */
+.buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+button {
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    color: white;
+}
+
+.on { background: #27ae60; }
+.off { background: #e74c3c; }
+
+/* LOG HISTORI */
+#log {
+    background: rgba(0,0,0,0.5);
+    padding: 10px;
+    border-radius: 8px;
+    margin-top: 5px;
+    font-family: monospace;
+    max-height: 150px;
+    overflow-y: auto;
+    font-size: 13px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+    <h2>Smart Parking</h2>
+
+    <div id="conn" class="status">Menghubungkan...</div>
+
+    <div class="box">
+        <div class="label">Jarak</div>
+        <div id="distance" class="value">- cm</div>
+    </div>
+
+    <div class="box">
+        <div class="label">Status Parkir</div>
+        <div id="status" class="value">-</div>
+        <div id="indicator" class="indicator"></div>
+    </div>
+
+    <div class="buttons">
+        <button class="on" onclick="kirim('LED1_ON')">LED1 ON</button>
+        <button class="off" onclick="kirim('LED1_OFF')">OFF</button>
+
+        <button class="on" onclick="kirim('LED2_ON')">LED2 ON</button>
+        <button class="off" onclick="kirim('LED2_OFF')">OFF</button>
+
+        <button class="on" onclick="kirim('LED3_ON')">LED3 ON</button>
+        <button class="off" onclick="kirim('LED3_OFF')">OFF</button>
+
+        <button class="on" onclick="kirim('LED4_ON')">LED4 ON</button>
+        <button class="off" onclick="kirim('LED4_OFF')">OFF</button>
+    </div>
+
+    <div class="box">
+        <div class="label">Histori Monitoring</div>
+        <div id="log"></div>
+    </div>
+</div>
+
+<script>
+const connBox = document.getElementById("conn");
+const statusBox = document.getElementById("status");
+const distanceBox = document.getElementById("distance");
+const logBox = document.getElementById("log");
+const indicator = document.getElementById("indicator");
+
+const client = mqtt.connect("wss://uts-esp32-parkir.cloud.shiftr.io", {
+    username: "uts-esp32-parkir",
+    password: "uts-esp32-parkir"
+});
+
+const topicDistance = "parkir/distance";
+const topicStatus = "parkir/status";
+const topicControl = "parkir/led/control";
+
+let historyData = [];
+
+client.on("connect", () => {
+    connBox.innerHTML = "Terhubung ke MQTT";
+    connBox.style.background = "#2ecc71";
+
+    addLog("MQTT Connected");
+
+    client.subscribe(topicDistance);
+    client.subscribe(topicStatus);
+});
+
+client.on("message", (topic, message) => {
+    const msg = message.toString();
+
+    if (topic === topicDistance) {
+        distanceBox.innerHTML = msg + " cm";
+    }
+
+    if (topic === topicStatus) {
+        statusBox.innerHTML = msg;
+
+        if (msg === "KOSONG") {
+            statusBox.style.color = "#2ecc71";
+            indicator.style.background = "#2ecc71";
+        } else if (msg === "MOBIL MASUK") {
+            statusBox.style.color = "#f1c40f";
+            indicator.style.background = "#f1c40f";
+        } else if (msg === "TERISI") {
+            statusBox.style.color = "#e74c3c";
+            indicator.style.background = "#e74c3c";
+        } else {
+            statusBox.style.color = "#e67e22";
+            indicator.style.background = "#e67e22";
+        }
+
+        // SIMPAN HISTORI
+        let waktu = new Date().toLocaleTimeString();
+
+        historyData.unshift({
+            time: waktu,
+            status: msg,
+            distance: distanceBox.innerHTML
+        });
+
+        if (historyData.length > 20) {
+            historyData.pop();
+        }
+
+        tampilkanHistori();
+    }
+});
+
+function tampilkanHistori() {
+    logBox.innerHTML = "";
+
+    historyData.forEach(data => {
+        logBox.innerHTML += `[${data.time}] ${data.distance} - ${data.status}<br>`;
+    });
+}
+
+function kirim(pesan) {
+    client.publish(topicControl, pesan);
+    addLog("Kirim: " + pesan);
+}
+
+function addLog(text) {
+    logBox.innerHTML += text + "<br>";
+    logBox.scrollTop = logBox.scrollHeight;
+}
+</script>
+
+</body>
+</html>
